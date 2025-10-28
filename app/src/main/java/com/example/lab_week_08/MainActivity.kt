@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.work.*
 import com.example.lab_week_08.worker.FirstWorker
 import com.example.lab_week_08.worker.SecondWorker
+import com.example.lab_week_08.worker.ThirdWorker
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
@@ -21,10 +22,9 @@ class MainActivity : AppCompatActivity() {
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
-                // Permission is granted.
+                // Izin diberikan
             } else {
-                // Explain to the user that the feature is unavailable because the
-                // feature requires a permission that the user has denied.
+                Toast.makeText(this, "Notification permission is required", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -37,11 +37,7 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
+        requestNotificationPermission()
 
         val id = "001"
         val networkConstraints = Constraints.Builder()
@@ -58,10 +54,17 @@ class MainActivity : AppCompatActivity() {
             .setInputData(getIdInputData(SecondWorker.INPUT_DATA_ID, id))
             .build()
 
+        val thirdRequest = OneTimeWorkRequest.Builder(ThirdWorker::class.java)
+            .setConstraints(networkConstraints)
+            .setInputData(getIdInputData(ThirdWorker.INPUT_DATA_ID, id))
+            .build()
+
         workManager.beginWith(firstRequest)
             .then(secondRequest)
+            .then(thirdRequest)
             .enqueue()
 
+        // Observer untuk setiap proses
         workManager.getWorkInfoByIdLiveData(firstRequest.id)
             .observe(this) { info ->
                 if (info != null && info.state.isFinished) {
@@ -76,6 +79,22 @@ class MainActivity : AppCompatActivity() {
                     launchNotificationService()
                 }
             }
+
+        workManager.getWorkInfoByIdLiveData(thirdRequest.id)
+            .observe(this) { info ->
+                if (info != null && info.state.isFinished) {
+                    showResult("Third process is done")
+                    launchSecondNotificationService()
+                }
+            }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
 
     private fun getIdInputData(idKey: String, idValue: String): Data =
@@ -93,6 +112,16 @@ class MainActivity : AppCompatActivity() {
         }
         val serviceIntent = Intent(this, NotificationService::class.java).apply {
             putExtra(NotificationService.EXTRA_ID, "001")
+        }
+        ContextCompat.startForegroundService(this, serviceIntent)
+    }
+
+    private fun launchSecondNotificationService() {
+        SecondNotificationService.trackingCompletion.observe(this) { id ->
+            showResult("Process for Notification Channel ID $id is done!")
+        }
+        val serviceIntent = Intent(this, SecondNotificationService::class.java).apply {
+            putExtra(SecondNotificationService.EXTRA_ID, "002")
         }
         ContextCompat.startForegroundService(this, serviceIntent)
     }
